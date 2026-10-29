@@ -1,0 +1,60 @@
+
+name: Snowflake CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "sql/04_cicd_customer_view.sql"
+      - ".github/workflows/snowflake-deploy.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy to Snowflake DEV
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: snowflake-dev-deploy
+      cancel-in-progress: false
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: GITHUB_CICD_USER
+      SNOWFLAKE_ROLE: GITHUB_CICD_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: GITHUB_LAB
+      SNOWFLAKE_SCHEMA: DEV
+
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Snowflake CLI
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+          cli-version: "3.16"
+
+      - name: Test Snowflake connection
+        run: snow connection test -x
+
+      - name: Deploy customer view
+        run: |
+          snow sql \
+            -f sql/04_cicd_customer_view.sql \
+            -x
+
+      - name: Validate deployed view
+        run: |
+          snow sql \
+            -f sql/05_validate_cicd.sql \
+            -x
