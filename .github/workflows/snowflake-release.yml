@@ -1,0 +1,85 @@
+
+name: Snowflake Controlled Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Choose release scenario"
+        required: true
+        type: choice
+        options:
+          - baseline
+          - faulty
+          - rollback
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: snowflake-dev-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy and validate release
+    runs-on: ubuntu-latest
+
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: GITHUB_CICD_USER
+      SNOWFLAKE_ROLE: GITHUB_CICD_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: GITHUB_LAB
+      SNOWFLAKE_SCHEMA: DEV
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Snowflake CLI
+        uses: snowflakedb/snowflake-actions@v3
+        with:
+          use-oidc: true
+          cli-version: "3.16"
+
+      - name: Verify Snowflake connection
+        run: snow connection test -x
+
+      - name: Choose release script
+        id: release_file
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          case "$RELEASE" in
+            baseline)
+              FILE="releases/v1_baseline.sql"
+              ;;
+            faulty)
+              FILE="releases/v2_faulty.sql"
+              ;;
+            rollback)
+              FILE="releases/v1_rollback.sql"
+              ;;
+            *)
+              echo "Invalid release option"
+              exit 1
+              ;;
+          esac
+
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy selected release
+        run: |
+          snow sql \
+            -f "${{ steps.release_file.outputs.file }}" \
+            -x
+
+      - name: Validate release
+        run: |
+          snow sql \
+            -f releases/validate_release.sql \
+            -x
