@@ -1,0 +1,16 @@
+
+-- Release V2: Intentionally faulty business logic
+-- Expected failure: view returns zero records
+
+CREATE OR REPLACE VIEW
+    GITHUB_LAB.DEV.VW_CUSTOMER_RELEASE
+    COPY GRANTS AS
+SELECT
+    CUSTOMER_ID,
+    CUSTOMER_NAME,
+    CITY,
+    EMAIL,
+    COALESCE(CUSTOMER_STATUS, 'UNKNOWN')
+        AS CUSTOMER_STATUS
+FROM GITHUB_LAB.BRONZE.CUSTOMERS
+WHERE CUSTOMER_ID = -999999;
